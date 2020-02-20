@@ -136,10 +136,11 @@ def main(cik):
             form4_dict = f_dictionary(form4_soup)     
             form4_dict_list.append(form4_dict) 
             
-            
+            #'periodOfReport' is filing date on form
+            #forms prior to 'cut_off_date' will not be added to database
             for dictionary in form4_dict_list:
-                date_on_form = format_date(dictionary['periodOfReport']) #'periodOfReport' is filing date on form
-                cut_off_date = format_date('2009-01-01') #forms prior to this date will not be added to database
+                date_on_form = format_date(dictionary['periodOfReport']) 
+                cut_off_date = format_date('2009-01-01') 
                 if date_on_form > cut_off_date:
                     pass 
                 else:
