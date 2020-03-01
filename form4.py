@@ -17,10 +17,10 @@ import csv
 
 #connect to MongoDB using pymongo
 client = MongoClient('localhost', 27017)
-db = client['form4']
-collection = db['form4_collection']
+db = client['form4_sp500']
+collection = db['form4_sp500_collection']
 
-#requests + beautifulSoup function
+#run requests  & beautifulSoup on URL
 def f_soup(url): 
     #spoof user agent 
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
@@ -28,7 +28,7 @@ def f_soup(url):
         try:
             request = requests.get(url, headers=headers)
         except Exception as error: #try again if request fails
-            print("## ERROR ##: ", url, error)
+            print("## URL ERROR ##: ", url, error)
             time.sleep(10)
             continue
         break
@@ -51,8 +51,8 @@ def append_sec(partial_url_list):
 #add key, values of Form 4 XML to form4_dict{}
 def f_dictionary(form4_soup): 
     form4_dict = {}
-    form4_key_list =['documentType', 'periodOfReport', 'issuerName', 'issuerTradingSymbol',
-                      'issuerCik', 'rptOwnerCik','rptOwnerName','transactionCode']
+    form4_key_list =['documentType', 'periodOfReport', 'issuerName', 'issuerTradingSymbol','rptOwnerCik',
+                      'officerTitle','issuerCik', 'rptOwnerCik','rptOwnerName']
     for key in form4_key_list:  
         find_key = form4_soup.find(key) 
         if find_key: #if the the key is found
@@ -62,16 +62,56 @@ def f_dictionary(form4_soup):
             else:
                 pass       
         else: #if the key is not found
-            value = "N/A"
+            value = "NaN"
         form4_dict.update({key : value})    
 
-    #parents of 'value' tags must be used for key in form4_dict{}
-    soup_value = form4_soup.find_all('value')
-    for tag in soup_value:
-        key = tag.parent.name
-        value = tag.text
-        form4_dict.update({key : value})
-    return form4_dict
+    #derivativeTransaciton contains several value tags that make up a transaciton
+    dt = form4_soup.findAll('derivativeTransaction')
+    dict_list=[]
+    for value in dt:
+        form4_dict_value={}
+#         new_dict = {'transaction':'derivative'}
+        #transactionCode does not contain a value tag 
+        tx_code = value.find('transactionCode')
+        if tx_code:
+            tx_code = tx_code.text
+            form4_dict_value.update({'transactionCode' : tx_code})
+        else:
+            pass
+        #parents of value tags contain the name of the value
+        value_tag = value.find_all('value')
+        for tag in value_tag:
+            y = tag.parent.name
+            x = tag.text
+            form4_dict_value.update({y:x})
+#             new_dict.update(form4_dict_value)
+#             dict_list.append(new_dict)
+        form4_dict_value.update(form4_dict)
+        dict_list.append(form4_dict_value)
+    
+    #nonDerivativeTransaciton contains several value tags that make up a transaciton
+    ndt = form4_soup.findAll('nonDerivativeTransaction')
+    for value in ndt:
+        form4_dict_value={}
+#         new_dict = {'transaction':'nonDerivative'}
+        tx_code = value.find('transactionCode')
+        #transactionCode does not contain a value tag 
+        if tx_code:
+            tx_code = tx_code.text
+            form4_dict_value.update({'transactionCode' : tx_code})
+        else:
+            pass
+        value_tag = value.find_all('value')
+        for tag in value_tag:  
+            y = tag.parent.name
+            x = tag.text
+            form4_dict_value.update({y:x})
+#             new_dict.update(form4_dict_value)
+#             dict_list.append(new_dict)
+        form4_dict_value.update(form4_dict)
+        dict_list.append(form4_dict_value)
+
+    return dict_list
 
 #format dates for use with '>', '<' operators 
 def format_date(date_to_format):  
@@ -81,7 +121,7 @@ def format_date(date_to_format):
 
 #iterate over cik numbers in csv
 def cik_loop(): 
-    with open('path_to_csv' , newline= '') as csv_file:
+    with open('/Users/a1/Python_git/form_4/cik_sp500_2:23:2020.csv' , newline= '') as csv_file:
         cik_reader = csv.reader(csv_file)
         for cik in cik_reader:
             cik = ''.join(cik) #convert from list to string
@@ -124,7 +164,7 @@ def main(cik):
         #beautifulSoup for form 4 .xml URLs 
         form4_dict_list = []
         for url in form4_xml_url_list:
-            form4_soup = f_soup(url)            
+            form4_soup = f_soup(url)
             form_type = form4_soup.find('documentType') #'documentType' is form type
             form_type = form_type.text
             if form_type == '4' or form_type == '4/A':
@@ -133,35 +173,42 @@ def main(cik):
                 continue #skip form if not form 4
             
             #create a dictionary from form4 xml data  
-            form4_dict = f_dictionary(form4_soup)     
-            form4_dict_list.append(form4_dict) 
-            
-            #'periodOfReport' is filing date on form
-            #forms prior to 'cut_off_date' will not be added to database
-            for dictionary in form4_dict_list:
-                date_on_form = format_date(dictionary['periodOfReport']) 
-                cut_off_date = format_date('2009-01-01') 
+            form4_dict = f_dictionary(form4_soup)  
+            form4_dict_list.append(form4_dict)
+           
+                
+        #Forms prior to 'cut_off_date' will not be added to CSV. Next CIK num will be selected   
+        #for dictionary in form4_dict_list:
+        for list_ in form4_dict_list:
+            for dictionary in list_:
+                date_on_form = format_date(dictionary['periodOfReport']) #'periodOfReport' is filing date on form
+                cut_off_date = format_date('2003-01-01') #forms prior to this date will not be added to database
                 if date_on_form > cut_off_date:
                     pass 
                 else:
-                    return       
-                     
-            #write form4_dict to csv
-            #Can also output to mongoDB here
-            with open('test.csv', 'a') as final_csv: 
-                for key in dictionary:
-                    final_csv.write("%s,%s\n"%(key,dictionary[key]))
-                    
-#         print(len(form4_dict_list), 'Form 4 documents added to CSV')
+                    print(date_on_form)
+                    return
+
+                #csv_cols will be the columns for the CSV. Write each dictionary to the CSV
+                csv_cols = ['documentType','periodOfReport','issuerCik','issuerName','issuerTradingSymbol'
+                            ,'rptOwnerCik','rptOwnerName','transactionCode','securityTitle','transactionDate'
+                            ,'transactionShares','transactionPricePerShare','transactionAcquiredDisposedCode'
+                            ,'sharesOwnedFollowingTransaction','directOrIndirectOwnership','natureOfOwnership'
+                            ,'conversionOrExercisePrice','exerciseDate','expirationDate','underlyingSecurityTitle'
+                            ,'underlyingSecurityTitle']
+                try:
+                    with open('/Users/a1/Python_git/form_4/test.csv', 'a') as csv_file:
+                        writer = csv.DictWriter(csv_file, fieldnames=csv_cols, restval='NaN',extrasaction='ignore')
+                        #writeheader will add the column names to each row created  
+                        #writer.writeheader()
+                        writer.writerow(dictionary)
+                except Exception as error: 
+                    print("## CSV ERROR ##: ", error) 
+
+    #         print(len(form4_dict_list), 'Form 4 documents added to CSV')
         page_number = page_number + 100
 
-cik_loop()                    
-
-
-# In[ ]:
-
-
-
+cik_loop()                  
 
 
 # In[ ]:
