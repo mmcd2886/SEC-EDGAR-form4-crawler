@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # In[2]:
-
+#https://www.sec.gov/cgi-bin/own-disp?action=getissuer&CIK=0000320193&type=&dateb=&owner=include&start=100
 
 from pymongo import MongoClient
 import bs4 as bs
